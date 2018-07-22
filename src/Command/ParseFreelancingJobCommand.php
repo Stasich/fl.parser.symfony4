@@ -12,13 +12,18 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Input\InputArgument;
+use App\Controller\ParserController;
 
-class ParseFreelancingJobCommand extends Command
-{
-    private $availableArgs = [
-        'fl' => TRUE,
-        'freelansim' => TRUE,
-    ];
+class ParseFreelancingJobCommand extends Command  {
+
+    /** @var ParserController $parserController */
+    private $parserController;
+
+    public function __construct(ParserController $parserController) {
+        $this->parserController = $parserController;
+        parent::__construct();
+    }
+
     protected function configure()
     {
         $this
@@ -33,9 +38,7 @@ class ParseFreelancingJobCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output)
     {
-        if (!array_key_exists($input->getArgument('site_name'), $this->availableArgs)) {
-            throw new \RuntimeException('Available\'s site_name "fl", "freelansim"');
-        }
-
+        $siteName = $input->getArgument('site_name');
+        $this->parserController->run($siteName);
     }
 }
