@@ -23,4 +23,5 @@ php bin/console doctrine:migrations:migrate
 2. Создать канал и добавить бота в админы
 4. В файле "src/Model/Config/ConfigTelegram.php" установить свои значения бота
 
+*Это перенос на symfony4 старого проекта по парсингу фриланс бирж: https://github.com/Stasich/telegramBot_ParserXML*
 
