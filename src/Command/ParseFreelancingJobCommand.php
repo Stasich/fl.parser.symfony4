@@ -14,7 +14,7 @@ use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Input\InputArgument;
 use App\Controller\ParserController;
 
-class ParseFreelancingJobCommand extends Command  {
+class ParseFreelancingJobCommand extends Command {
 
     /** @var ParserController $parserController */
     private $parserController;
@@ -24,8 +24,7 @@ class ParseFreelancingJobCommand extends Command  {
         parent::__construct();
     }
 
-    protected function configure()
-    {
+    protected function configure() {
         $this
             ->setName('app:parse-freelancing-job')
             ->setDescription('Parse and send to telegram freelancing job.')
@@ -33,12 +32,25 @@ class ParseFreelancingJobCommand extends Command  {
             // the "--help" option
             ->setHelp('This command allows you to parse')
         ;
-        $this->addArgument('site_name', InputArgument::REQUIRED, 'short name of site');
+
+        $this->addArgument(
+        	'site_name',
+			InputArgument::REQUIRED,
+			'short name of site. Available values:'
+		);
+
+        $this->addOption(
+        	'dry_run',
+			NULL,
+			NULL,
+			'Print messages to console',
+			NULL
+		);
     }
 
-    protected function execute(InputInterface $input, OutputInterface $output)
-    {
+    protected function execute(InputInterface $input, OutputInterface $output) {
         $siteName = $input->getArgument('site_name');
-        $this->parserController->run($siteName);
+        $options['dry_run'] = $input->getOption('dry_run');
+        $this->parserController->run($siteName, $options);
     }
 }

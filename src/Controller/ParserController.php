@@ -10,103 +10,169 @@ namespace App\Controller;
 
 use App\Model\Config\Config;
 use App\Model\Config\ConfigFactory;
+use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use App\Entity\Links;
+use App\Model\Config\ConfigTelegram;
 
+class ParserController extends AbstractController
+{
+	/** @var Config $config */
+	private $config;
 
-class ParserController {
-    /** @var Config $config */
-    private $config;
+	private $availableArgs = [
+		'fl' => TRUE,
+		'freelansim' => TRUE,
+	];
 
-    private $availableArgs = [
-        'fl' => TRUE,
-        'freelansim' => TRUE,
-    ];
+	/**
+	 * @param string $siteName
+	 * @param array $options
+	 */
+	public function run(string $siteName, array $options = [])
+	{
+		if (PHP_SAPI !== 'cli') {
+			throw new \RuntimeException('It\'s not cli');
+		}
 
-    /**
-     * @param string $siteName
-     */
-    public function run(string $siteName) {
-        if (PHP_SAPI !== 'cli') {
-            throw new \RuntimeException('It\'s not cli');
-        }
+		if (!array_key_exists($siteName, $this->availableArgs)) {
+			throw new \RuntimeException('Available\'s site_name "fl", "freelansim"');
+		}
 
-        if (!array_key_exists($siteName, $this->availableArgs)) {
-            throw new \RuntimeException('Available\'s site_name "fl", "freelansim"');
-        }
+		$this->config = ConfigFactory::getConfig($siteName);
 
-        $this->config = ConfigFactory::getConfig($siteName);
-        $newPosts = $this->getNewPosts();
-    }
+		$newPosts = $this->getNewPosts($siteName);
 
-    private function getNewPosts() {
-        $items = $this->getXmlItems();
+		if (!empty($options['dry_run'])) {
+			var_export($newPosts);
+		} else {
+			$this->sendPostsToTelegram(
+				$newPosts,
+				ConfigTelegram::TOKEN,
+				ConfigTelegram::CHAT_ID,
+				ConfigTelegram::OPTIONS
+			);
+		}
+	}
 
-        $patternForRegexp = '/(<br>)+/';  // шаблон для замены <br> на \n в description
+	/**
+	 * @param string $siteName
+	 * @return array
+	 */
+	private function getNewPosts(string $siteName): array
+	{
+		$items = $this->getXmlItems();
 
-        //нужна доктрина
-        $tableLinks = TableLinks::getInstance();
-        $patternForXML = $tableLinks->getLinks($this->prefix);
+		$patternForRegexp = '/(<br>)+/';  // шаблон для замены <br> на \n в description
 
-        $newPostsInArr = [];
-        $viewed_links = [];
+		//нужна доктрина
+		$rep = $this->getDoctrine()->getRepository(Links::class);
+		$linksInDb = $rep->findLastRowsByServiceId($this->config->getServiceId());
 
-        foreach ($items as $item) {
-            $date = $item->getElementsByTagName("pubDate");
-            $date = $date[0]->nodeValue;
+		//положу ссылки в ключи массива, чтобы потом быстрее по ним искать вхождения
+		$patternForXML = [];
+		/** @var Links $link */
+		foreach ($linksInDb as $link) {
+			$patternForXML[$link->getLink()] = TRUE;
+		}
 
-            $title = $item->getElementsByTagName("title");
-            $title = strip_tags(trim($title[0]->nodeValue), '<a>');
+		$entityManager = $this->getDoctrine()->getManager();
+		$newPostsInArr = [];
 
-            $link = $item->getElementsByTagName("link");
-            $link = $link[0]->nodeValue;
+		/** @var \DOMElement $item */
+		foreach ($items as $item) {
+			$date = $item->getElementsByTagName("pubDate");
+			//@TODO проверочку?
+			$date = $date[0]->nodeValue;
 
-            $description = $item->getElementsByTagName("description");
-            $description = strip_tags(preg_replace($patternForRegexp, "\n", trim($description[0]->nodeValue)), '<a>');
+			$title = $item->getElementsByTagName("title");
+			$title = strip_tags(trim($title[0]->nodeValue), '<a>');
 
-            if (array_key_exists($link, $patternForXML)) {
-                break;
-            }
-            $viewed_links[] = $link;
+			$link = $item->getElementsByTagName("link");
+			$link = $link[0]->nodeValue;
 
-            $newPostsInArr[] = compact('date', 'title', 'link', 'description');
-        }
+			$description = $item->getElementsByTagName("description");
+			$description = strip_tags(preg_replace($patternForRegexp, "\n", trim($description[0]->nodeValue)), '<a>');
 
-        if (count($newPostsInArr) > 0) {
-            $tableLinks->addViewedLinksToDb($viewed_links, $this->prefix);
-        }
-        return $newPostsInArr;
-    }
+			if (array_key_exists($link, $patternForXML)) {
+				break;
+			}
+			$linkEntity = new Links();
+			$linkEntity->setLink($link)
+				->setServiceId($this->config->getServiceId());
+			$entityManager->persist($linkEntity);
+			$linkEntity = NULL;
 
-    /**
-     * @return \DOMNodeList
-     */
-    private function getXmlItems(): \DOMNodeList {
-        $dom_xml = new \DomDocument(2.0, 'UTF-8');
-        $dom_xml->loadXML($this->curlLoad($this->config->getServiceLink()));
-        $items = $dom_xml->getElementsByTagName("item");
-        return $items;
-    }
+			$newPostsInArr[] = compact('date', 'title', 'link', 'description');
+		}
 
-    private function curlLoad($url): string {
-        $cookie = tmpfile();
-        $userAgent = 'Mozilla/5.0 (Windows NT 6.2; WOW64) AppleWebKit/537.31 (KHTML, like Gecko) Chrome/26.0.1410.64 Safari/537.31' ;
+		$entityManager->flush();
 
-        $ch = curl_init($url);
+		return $newPostsInArr;
+	}
 
-        $options = array(
-            CURLOPT_CONNECTTIMEOUT => 20 ,
-            CURLOPT_USERAGENT => $userAgent,
-            CURLOPT_AUTOREFERER => true,
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_COOKIEFILE => $cookie,
-            CURLOPT_COOKIEJAR => $cookie ,
-            CURLOPT_SSL_VERIFYPEER => 0 ,
-            CURLOPT_SSL_VERIFYHOST => 0
-        );
+	/**
+	 * @return \DOMNodeList
+	 */
+	private function getXmlItems(): \DOMNodeList
+	{
+		$dom_xml = new \DomDocument(2.0, 'UTF-8');
+		$dom_xml->loadXML($this->curlLoad($this->config->getServiceLink()));
+		$items = $dom_xml->getElementsByTagName("item");
+		return $items;
+	}
 
-        curl_setopt_array($ch, $options);
-        $result = curl_exec($ch);
-        curl_close($ch);
-        return $result;
-    }
+	private function curlLoad($url): string
+	{
+		$cookie = tmpfile();
+		$userAgent = 'Mozilla/5.0 (Windows NT 6.2; WOW64) AppleWebKit/537.31 (KHTML, like Gecko) Chrome/26.0.1410.64 Safari/537.31';
+
+		$ch = curl_init($url);
+
+		$options = array(
+			CURLOPT_CONNECTTIMEOUT => 20,
+			CURLOPT_USERAGENT => $userAgent,
+			CURLOPT_AUTOREFERER => true,
+			CURLOPT_FOLLOWLOCATION => true,
+			CURLOPT_RETURNTRANSFER => true,
+			CURLOPT_COOKIEFILE => $cookie,
+			CURLOPT_COOKIEJAR => $cookie,
+			CURLOPT_SSL_VERIFYPEER => 0,
+			CURLOPT_SSL_VERIFYHOST => 0
+		);
+
+		curl_setopt_array($ch, $options);
+		$result = curl_exec($ch);
+		curl_close($ch);
+		fclose($cookie);
+		return $result;
+	}
+
+	public function sendPostsToTelegram($newPostsInArr, $token, $chat_id, $options)
+	{
+		$postsCount = count($newPostsInArr);
+
+		if ($postsCount === 0) {
+			return;
+		}
+
+		for ($i = $postsCount - 1; $i >= 0; $i--) {
+			if (!isset(
+				$newPostsInArr[$i]['date'],
+				$newPostsInArr[$i]['title'],
+				$newPostsInArr[$i]['description'],
+				$newPostsInArr[$i]['link']
+			)) {
+				continue;
+			}
+
+			$str = "<b>" . $newPostsInArr[$i]['date'] . "</b>\n<b>" .
+				$newPostsInArr[$i]['title'] . "</b>\n" .
+				$newPostsInArr[$i]['description'] . "\n" .
+				$newPostsInArr[$i]['link'];
+			$str = urlencode($str);
+			$query = "https://api.telegram.org/bot$token/sendMessage?chat_id=$chat_id&$options&text=$str";
+			echo $query;
+			file($query);
+		}
+	}
 }
