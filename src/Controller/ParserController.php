@@ -40,7 +40,7 @@ class ParserController extends AbstractController
 
 		$this->config = ConfigFactory::getConfig($siteName);
 
-		$newPosts = $this->getNewPosts($siteName);
+		$newPosts = $this->getNewPosts();
 
 		if (!empty($options['dry_run'])) {
 			var_export($newPosts);
@@ -55,10 +55,9 @@ class ParserController extends AbstractController
 	}
 
 	/**
-	 * @param string $siteName
 	 * @return array
 	 */
-	private function getNewPosts(string $siteName): array
+	private function getNewPosts(): array
 	{
 		$items = $this->getXmlItems();
 
@@ -88,12 +87,13 @@ class ParserController extends AbstractController
 			$title = strip_tags(trim($title[0]->nodeValue), '<a>');
 
 			$link = $item->getElementsByTagName("link");
+			/** @var string $link */
 			$link = $link[0]->nodeValue;
 
 			$description = $item->getElementsByTagName("description");
 			$description = strip_tags(preg_replace($patternForRegexp, "\n", trim($description[0]->nodeValue)), '<a>');
 
-			if (array_key_exists($link, $patternForXML)) {
+			if (isset($patternForXML[$link])) {
 				break;
 			}
 			$linkEntity = new Links();
