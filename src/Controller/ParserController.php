@@ -64,18 +64,11 @@ class ParserController extends AbstractController
 		$patternForRegexp = '/(<br>)+/';  // шаблон для замены <br> на \n в description
 
 		//нужна доктрина
-		$rep = $this->getDoctrine()->getRepository(Links::class);
-		$linksInDb = $rep->findLastRowsByServiceId($this->config->getServiceId());
-
-		//положу ссылки в ключи массива, чтобы потом быстрее по ним искать вхождения
-		$patternForXML = [];
-		/** @var Links $link */
-		foreach ($linksInDb as $link) {
-			$patternForXML[$link->getLink()] = TRUE;
-		}
-
 		$entityManager = $this->getDoctrine()->getManager();
-		$newPostsInArr = [];
+
+        $linksRepository = $entityManager->getRepository(Links::class);
+
+        $newPostsInArr = [];
 
 		/** @var \DOMElement $item */
 		foreach ($items as $item) {
@@ -93,9 +86,14 @@ class ParserController extends AbstractController
 			$description = $item->getElementsByTagName("description");
 			$description = strip_tags(preg_replace($patternForRegexp, "\n", trim($description[0]->nodeValue)), '<a>');
 
-			if (isset($patternForXML[$link])) {
-				break;
-			}
+			$existTask = $linksRepository->findOneBy(
+			    [
+			        'link' => $link
+                ]
+            );
+
+			if ($existTask) continue;
+
 			$linkEntity = new Links();
 			$linkEntity->setLink($link)
 				->setServiceId($this->config->getServiceId());
