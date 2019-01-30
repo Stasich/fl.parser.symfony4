@@ -98,12 +98,11 @@ class ParserController extends AbstractController
 			$linkEntity->setLink($link)
 				->setServiceId($this->config->getServiceId());
 			$entityManager->persist($linkEntity);
+            $entityManager->flush();
 			$linkEntity = NULL;
 
 			$newPostsInArr[] = compact('date', 'title', 'link', 'description');
 		}
-
-		$entityManager->flush();
 
 		return $newPostsInArr;
 	}
