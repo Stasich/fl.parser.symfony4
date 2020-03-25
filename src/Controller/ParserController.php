@@ -22,6 +22,7 @@ class ParserController extends AbstractController
 	private $availableArgs = [
 		'fl' => TRUE,
 		'freelansim' => TRUE,
+        'upwork' => TRUE,
 	];
 
 	/**
@@ -35,7 +36,7 @@ class ParserController extends AbstractController
 		}
 
 		if (!array_key_exists($siteName, $this->availableArgs)) {
-			throw new \RuntimeException('Available\'s site_name "fl", "freelansim"');
+			throw new \RuntimeException('Available site_names are: ' . implode( ', ', array_keys($this->availableArgs)));
 		}
 
 		$this->config = ConfigFactory::getConfig($siteName);
